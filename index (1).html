@@ -1,0 +1,1475 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Analysassistent — Länsstyrelsen VG</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+
+  <!-- Markdown-parser -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+  <!-- DOMPurify för säker HTML-rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js"></script>
+  <!-- docx för Word-export -->
+  <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.min.js"></script>
+  <!-- file-saver för nedladdning -->
+  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+
+  <style>
+    :root {
+      --bg:        #0d1117;
+      --surface:   #161b22;
+      --surface-2: #1c2128;
+      --border:    #21262d;
+      --border-2:  #30363d;
+      --accent:    #2ea44f;
+      --accent2:   #58a6ff;
+      --accent3:   #f0883e;
+      --text:      #e6edf3;
+      --text-2:    #c9d1d9;
+      --muted:     #7d8590;
+      --user-bg:   #1f6feb22;
+      --bot-bg:    #2ea44f12;
+      --danger:    #f85149;
+      --radius:    14px;
+      --radius-sm: 8px;
+      --font-head: 'DM Serif Display', Georgia, serif;
+      --font-body: 'DM Sans', sans-serif;
+      --font-mono: 'DM Mono', monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      font-size: 15px;
+      line-height: 1.6;
+      height: 100dvh;
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      grid-template-rows: 100%;
+      overflow: hidden;
+    }
+
+    /* ── Sidopanel ── */
+    aside {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .aside-header {
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .aside-header h2 {
+      font-family: var(--font-head);
+      font-size: 1rem;
+      font-weight: 400;
+      letter-spacing: -0.01em;
+    }
+
+    .new-chat-btn {
+      margin-left: auto;
+      width: 28px; height: 28px;
+      border-radius: 7px;
+      border: 1px solid var(--border-2);
+      background: var(--surface-2);
+      color: var(--text-2);
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      transition: all 0.15s;
+    }
+    .new-chat-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+    .new-chat-btn svg { width: 14px; height: 14px; fill: currentColor; }
+
+    .saved-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+    }
+
+    .saved-list::-webkit-scrollbar { width: 4px; }
+    .saved-list::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 99px; }
+
+    .saved-item {
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      margin-bottom: 4px;
+      cursor: pointer;
+      transition: background 0.12s;
+      position: relative;
+      border: 1px solid transparent;
+    }
+
+    .saved-item:hover {
+      background: var(--surface-2);
+      border-color: var(--border-2);
+    }
+
+    .saved-item.active {
+      background: var(--surface-2);
+      border-color: var(--accent2);
+    }
+
+    .saved-item-title {
+      font-size: 0.85rem;
+      color: var(--text-2);
+      font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      padding-right: 22px;
+    }
+
+    .saved-item-date {
+      font-size: 0.7rem;
+      color: var(--muted);
+      margin-top: 2px;
+      font-family: var(--font-mono);
+    }
+
+    .saved-item-delete {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 22px; height: 22px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      border-radius: 5px;
+      opacity: 0;
+      transition: all 0.12s;
+      display: grid;
+      place-items: center;
+    }
+    .saved-item:hover .saved-item-delete { opacity: 1; }
+    .saved-item-delete:hover { color: var(--danger); background: var(--bg); }
+    .saved-item-delete svg { width: 12px; height: 12px; fill: currentColor; }
+
+    .saved-empty {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.78rem;
+      padding: 24px 16px;
+      line-height: 1.5;
+    }
+
+    .aside-footer {
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+      font-size: 0.7rem;
+      color: var(--muted);
+      font-family: var(--font-mono);
+    }
+
+    .aside-footer-sources {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 6px;
+    }
+
+    .source-pill {
+      font-size: 0.65rem;
+      padding: 2px 8px;
+      border-radius: 99px;
+      background: var(--surface-2);
+      border: 1px solid var(--border-2);
+      color: var(--muted);
+      font-family: var(--font-mono);
+      letter-spacing: 0.04em;
+    }
+
+    /* ── Main ── */
+    main {
+      display: grid;
+      grid-template-rows: auto 1fr auto auto;
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      position: relative;
+      z-index: 10;
+    }
+
+    .logo-ring {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      border: 2px solid var(--accent);
+      display: grid; place-items: center;
+      flex-shrink: 0;
+    }
+
+    .logo-ring svg { width: 20px; height: 20px; fill: var(--accent); }
+
+    header h1 {
+      font-family: var(--font-head);
+      font-size: 1.15rem;
+      font-weight: 400;
+      letter-spacing: -0.01em;
+    }
+
+    header .subtitle {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 1px;
+    }
+
+    .header-actions {
+      margin-left: auto;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .header-btn {
+      font-family: var(--font-body);
+      font-size: 0.78rem;
+      padding: 7px 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-2);
+      background: var(--surface-2);
+      color: var(--text-2);
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .header-btn:hover:not(:disabled) {
+      border-color: var(--accent2);
+      color: var(--accent2);
+    }
+    .header-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .header-btn svg { width: 13px; height: 13px; fill: currentColor; }
+
+    .save-btn {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: #2ea44f10;
+    }
+    .save-btn:hover:not(:disabled) {
+      background: #2ea44f22;
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .status-dot {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.72rem;
+      color: var(--muted);
+      flex-shrink: 0;
+      padding-left: 10px;
+      border-left: 1px solid var(--border-2);
+    }
+
+    .status-dot::before {
+      content: '';
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    /* ── Messages ── */
+    #messages {
+      overflow-y: auto;
+      padding: 28px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      scroll-behavior: smooth;
+    }
+
+    #messages::-webkit-scrollbar { width: 4px; }
+    #messages::-webkit-scrollbar-track { background: transparent; }
+    #messages::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 99px; }
+
+    .msg-row {
+      display: flex;
+      flex-direction: column;
+      padding: 0 24px;
+      max-width: 860px;
+      width: 100%;
+      margin: 0 auto;
+      animation: fadeUp 0.25s ease;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .msg-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .msg-label {
+      font-size: 0.68rem;
+      font-family: var(--font-mono);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .msg-row.user .msg-label { color: var(--accent2); }
+    .msg-row.bot  .msg-label { color: var(--accent); }
+
+    .msg-actions {
+      display: flex;
+      gap: 4px;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+    .msg-row:hover .msg-actions { opacity: 1; }
+
+    .msg-action-btn {
+      width: 22px; height: 22px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      border-radius: 5px;
+      display: grid;
+      place-items: center;
+      transition: all 0.12s;
+    }
+    .msg-action-btn:hover {
+      color: var(--accent2);
+      background: var(--surface-2);
+    }
+    .msg-action-btn svg { width: 13px; height: 13px; fill: currentColor; }
+    .msg-action-btn.copied { color: var(--accent); }
+
+    .bubble {
+      padding: 14px 18px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      max-width: 100%;
+      word-break: break-word;
+      line-height: 1.65;
+    }
+
+    .msg-row.user .bubble {
+      background: var(--user-bg);
+      border-color: #1f6feb44;
+      align-self: flex-end;
+      max-width: 85%;
+      white-space: pre-wrap;
+    }
+
+    .msg-row.bot .bubble {
+      background: var(--bot-bg);
+      border-color: #2ea44f22;
+      align-self: flex-start;
+    }
+
+    /* Markdown-rendering */
+    .bubble h1, .bubble h2, .bubble h3, .bubble h4 {
+      font-family: var(--font-head);
+      font-weight: 400;
+      margin: 18px 0 10px;
+      color: var(--text);
+      line-height: 1.3;
+    }
+    .bubble h1 { font-size: 1.35rem; }
+    .bubble h2 { font-size: 1.18rem; }
+    .bubble h3 { font-size: 1.05rem; }
+    .bubble h4 { font-size: 0.95rem; font-family: var(--font-body); font-weight: 600; }
+    .bubble h1:first-child, .bubble h2:first-child, .bubble h3:first-child { margin-top: 0; }
+
+    .bubble p { margin-bottom: 10px; }
+    .bubble p:last-child { margin-bottom: 0; }
+
+    .bubble strong { font-weight: 600; color: var(--text); }
+    .bubble em { font-style: italic; color: var(--text-2); }
+
+    .bubble ul, .bubble ol {
+      margin: 8px 0 12px;
+      padding-left: 22px;
+    }
+    .bubble li { margin-bottom: 4px; }
+    .bubble li::marker { color: var(--muted); }
+
+    .bubble code {
+      font-family: var(--font-mono);
+      font-size: 0.85em;
+      background: #0d1117;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border-2);
+      color: var(--accent3);
+    }
+
+    .bubble pre {
+      background: #0d1117;
+      border: 1px solid var(--border-2);
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+      overflow-x: auto;
+      margin: 10px 0;
+    }
+    .bubble pre code {
+      background: transparent;
+      border: none;
+      padding: 0;
+      color: var(--text-2);
+    }
+
+    .bubble blockquote {
+      border-left: 3px solid var(--accent);
+      padding: 4px 14px;
+      margin: 10px 0;
+      color: var(--text-2);
+      background: var(--surface);
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    }
+
+    .bubble table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 12px 0;
+      font-size: 0.9em;
+      overflow: hidden;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-2);
+    }
+    .bubble th, .bubble td {
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-2);
+    }
+    .bubble th {
+      background: var(--surface-2);
+      font-weight: 600;
+      color: var(--text);
+      font-size: 0.85em;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .bubble tr:last-child td { border-bottom: none; }
+    .bubble tr:nth-child(even) td { background: rgba(255,255,255,0.015); }
+
+    .bubble a {
+      color: var(--accent2);
+      text-decoration: none;
+      border-bottom: 1px dotted var(--accent2);
+    }
+    .bubble a:hover { border-bottom-style: solid; }
+
+    .bubble hr {
+      border: none;
+      border-top: 1px solid var(--border-2);
+      margin: 14px 0;
+    }
+
+    /* Typing indicator */
+    .typing-bubble {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+      padding: 14px 17px;
+      border-radius: var(--radius);
+      background: var(--bot-bg);
+      border: 1px solid #2ea44f22;
+      width: fit-content;
+    }
+
+    .typing-bubble span {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: bounce 1.2s infinite;
+    }
+    .typing-bubble span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-bubble span:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes bounce {
+      0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+      30%            { transform: translateY(-5px); opacity: 1; }
+    }
+
+    /* ── Suggestions ── */
+    .suggestions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 0 24px 12px;
+      max-width: 860px;
+      width: 100%;
+      margin: 8px auto 0;
+    }
+
+    .suggestion-btn {
+      font-family: var(--font-body);
+      font-size: 0.8rem;
+      padding: 7px 13px;
+      border-radius: 99px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .suggestion-btn:hover {
+      border-color: var(--accent2);
+      color: var(--accent2);
+      background: #58a6ff11;
+    }
+
+    .suggestion-tag {
+      font-size: 0.65rem;
+      padding: 1px 5px;
+      border-radius: 4px;
+      margin-right: 6px;
+      font-family: var(--font-mono);
+      letter-spacing: 0.04em;
+    }
+    .tag-scb { background: #58a6ff22; color: var(--accent2); }
+    .tag-kolada { background: #2ea44f22; color: var(--accent); }
+    .tag-reg { background: #f0883e22; color: var(--accent3); }
+
+    /* ── Input area ── */
+    footer {
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      padding: 16px 24px;
+    }
+
+    .input-wrap {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+      max-width: 860px;
+      margin: 0 auto;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 8px 8px 8px 16px;
+      transition: border-color 0.15s;
+    }
+
+    .input-wrap:focus-within {
+      border-color: var(--accent2);
+    }
+
+    textarea {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--text);
+      font-family: var(--font-body);
+      font-size: 15px;
+      line-height: 1.5;
+      resize: none;
+      max-height: 140px;
+      min-height: 24px;
+      field-sizing: content;
+    }
+
+    textarea::placeholder { color: var(--muted); }
+
+    textarea::-webkit-scrollbar { width: 3px; }
+    textarea::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+    .send-btn {
+      width: 36px; height: 36px;
+      border-radius: 10px;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+      transition: all 0.15s;
+      align-self: flex-end;
+    }
+
+    .send-btn:hover:not(:disabled) {
+      background: #3fb950;
+      transform: scale(1.04);
+    }
+
+    .send-btn:disabled {
+      background: var(--border);
+      cursor: not-allowed;
+    }
+
+    .send-btn svg { width: 16px; height: 16px; fill: currentColor; }
+
+    .footer-meta {
+      max-width: 860px;
+      margin: 9px auto 0;
+      font-size: 0.7rem;
+      color: var(--muted);
+      display: flex;
+      gap: 4px;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed;
+      bottom: 100px;
+      left: 50%;
+      transform: translateX(-50%) translateY(40px);
+      background: var(--surface-2);
+      border: 1px solid var(--accent);
+      color: var(--text);
+      padding: 10px 18px;
+      border-radius: var(--radius-sm);
+      font-size: 0.85rem;
+      opacity: 0;
+      transition: all 0.25s;
+      pointer-events: none;
+      z-index: 100;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* ── Empty state ── */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      gap: 10px;
+      color: var(--muted);
+      text-align: center;
+      padding: 32px;
+      animation: fadeUp 0.4s ease;
+    }
+
+    .empty-state h2 {
+      font-family: var(--font-head);
+      font-size: 2rem;
+      font-weight: 400;
+      color: var(--text);
+      line-height: 1.2;
+    }
+
+    .empty-state p {
+      font-size: 0.9rem;
+      max-width: 460px;
+      color: var(--muted);
+    }
+
+    .empty-icon {
+      font-size: 2.5rem;
+      margin-bottom: 6px;
+    }
+
+    /* ── Mobil/responsiv ── */
+    @media (max-width: 720px) {
+      body { grid-template-columns: 1fr; }
+      aside {
+        position: fixed;
+        left: 0; top: 0; bottom: 0;
+        width: 280px;
+        z-index: 50;
+        transform: translateX(-100%);
+        transition: transform 0.25s;
+      }
+      aside.open { transform: translateX(0); }
+      .menu-btn { display: grid !important; }
+      .header-btn .label { display: none; }
+    }
+
+    .menu-btn {
+      display: none;
+      width: 32px; height: 32px;
+      border: 1px solid var(--border-2);
+      background: var(--surface-2);
+      color: var(--text-2);
+      border-radius: 7px;
+      cursor: pointer;
+      place-items: center;
+    }
+    .menu-btn svg { width: 16px; height: 16px; fill: currentColor; }
+  </style>
+</head>
+<body>
+
+<!-- ── Sidopanel: sparade analyser ── -->
+<aside id="aside">
+  <div class="aside-header">
+    <h2>Sparade analyser</h2>
+    <button class="new-chat-btn" onclick="newChat()" title="Ny analys">
+      <svg viewBox="0 0 16 16"><path d="M8 1.5v13M1.5 8h13" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+  <div class="saved-list" id="savedList">
+    <!-- Befolkad av JS -->
+  </div>
+  <div class="aside-footer">
+    Tillgängliga källor:
+    <div class="aside-footer-sources">
+      <span class="source-pill">SCB</span>
+      <span class="source-pill">Kolada</span>
+      <span class="source-pill">Riksdag/Regering</span>
+    </div>
+  </div>
+</aside>
+
+<main>
+  <header>
+    <button class="menu-btn" onclick="toggleAside()" title="Meny">
+      <svg viewBox="0 0 16 16"><path d="M2 4h12v1.5H2zM2 7.25h12v1.5H2zM2 10.5h12v1.5H2z"/></svg>
+    </button>
+    <div class="logo-ring">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M3 3h18v2H3V3zm0 4h12v2H3V7zm0 4h18v2H3v-2zm0 4h12v2H3v-2zm0 4h18v2H3v-2z"/>
+      </svg>
+    </div>
+    <div>
+      <h1>Analysassistent</h1>
+      <div class="subtitle">Länsstyrelsen Västra Götaland · SCB · Kolada · Regeringsdokument</div>
+    </div>
+    <div class="header-actions">
+      <button class="header-btn save-btn" id="saveBtn" onclick="saveCurrentChat()" disabled title="Spara denna analys i sidopanelen">
+        <svg viewBox="0 0 16 16"><path d="M2 2v12l4-2 4 2 4-2V2H2zm10 9.5l-2-1-2 1V4h4v7.5z"/></svg>
+        <span class="label">Spara</span>
+      </button>
+      <button class="header-btn" id="exportMdBtn" onclick="exportMarkdown()" disabled title="Ladda ner som Markdown">
+        <svg viewBox="0 0 16 16"><path d="M8 11.5l-3.5-3.5h2V2h3v6h2L8 11.5zM2 13h12v1.5H2z"/></svg>
+        <span class="label">.md</span>
+      </button>
+      <button class="header-btn" id="exportDocxBtn" onclick="exportDocx()" disabled title="Ladda ner som Word-dokument">
+        <svg viewBox="0 0 16 16"><path d="M8 11.5l-3.5-3.5h2V2h3v6h2L8 11.5zM2 13h12v1.5H2z"/></svg>
+        <span class="label">.docx</span>
+      </button>
+      <div class="status-dot">Live</div>
+    </div>
+  </header>
+
+  <div id="messages">
+    <div class="empty-state" id="empty">
+      <div class="empty-icon">📊</div>
+      <h2>Vad vill du analysera?</h2>
+      <p>Ställ frågor om statistik och samhällsdata för Västra Götaland — från SCB, Kolada och regeringens dokument. Spara intressanta analyser i sidopanelen för att återvända till dem senare.</p>
+    </div>
+  </div>
+
+  <div class="suggestions" id="suggestions">
+    <button class="suggestion-btn" onclick="sendSuggestion(this)">
+      <span class="suggestion-tag tag-scb">SCB</span>Befolkningsutveckling i Mariestad senaste 10 åren
+    </button>
+    <button class="suggestion-btn" onclick="sendSuggestion(this)">
+      <span class="suggestion-tag tag-kolada">Kolada</span>Jämför grundskolebehörighet i Skövde, Lidköping och Mariestad
+    </button>
+    <button class="suggestion-btn" onclick="sendSuggestion(this)">
+      <span class="suggestion-tag tag-reg">Reg</span>Senaste propositioner om regional utveckling
+    </button>
+    <button class="suggestion-btn" onclick="sendSuggestion(this)">
+      <span class="suggestion-tag tag-scb">SCB</span>Sysselsättningsgrad VG-kommuner
+    </button>
+  </div>
+
+  <footer>
+    <div class="input-wrap">
+      <textarea
+        id="input"
+        placeholder="Skriv din fråga…"
+        rows="1"
+        onkeydown="handleKey(event)"
+        oninput="autoResize(this)"
+      ></textarea>
+      <button class="send-btn" id="sendBtn" onclick="sendMessage()" title="Skicka">
+        <svg viewBox="0 0 16 16"><path d="M1.5 1.5l13 6.5-13 6.5V9.5l9-3-9-3V1.5z"/></svg>
+      </button>
+    </div>
+    <div class="footer-meta">
+      <span>Drivs av n8n · gpt-4o-mini · Länsstyrelsen VG</span>
+      <span id="msgCount"></span>
+    </div>
+  </footer>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  // ──────────────────────────────────────────────────────
+  // Konfiguration
+  // ──────────────────────────────────────────────────────
+  const WEBHOOK_URL = "https://n8n-edu.walkstripe.cc/webhook/a1edeae7-f806-4b50-ab80-8e7077d5ca8e/chat";
+  const STORAGE_KEY = "lstvg_analysassistent_v1";
+
+  // ──────────────────────────────────────────────────────
+  // Tillstånd
+  // ──────────────────────────────────────────────────────
+  let sessionId = crypto.randomUUID();
+  let isLoading = false;
+  let currentChat = {
+    id: null,
+    title: null,
+    createdAt: null,
+    sessionId: sessionId,
+    messages: []  // [{role: 'user'|'bot', text: string, ts: number}]
+  };
+
+  // ──────────────────────────────────────────────────────
+  // DOM
+  // ──────────────────────────────────────────────────────
+  const messagesEl   = document.getElementById("messages");
+  const inputEl      = document.getElementById("input");
+  const sendBtn      = document.getElementById("sendBtn");
+  const emptyEl      = document.getElementById("empty");
+  const sugsEl       = document.getElementById("suggestions");
+  const savedListEl  = document.getElementById("savedList");
+  const saveBtn      = document.getElementById("saveBtn");
+  const exportMdBtn  = document.getElementById("exportMdBtn");
+  const exportDocxBtn = document.getElementById("exportDocxBtn");
+  const asideEl      = document.getElementById("aside");
+  const msgCountEl   = document.getElementById("msgCount");
+  const toastEl      = document.getElementById("toast");
+
+  // ──────────────────────────────────────────────────────
+  // Markdown setup (säker rendering via DOMPurify)
+  // ──────────────────────────────────────────────────────
+  marked.setOptions({
+    breaks: true,
+    gfm: true,
+    headerIds: false,
+    mangle: false
+  });
+
+  function renderMarkdown(text) {
+    const rawHtml = marked.parse(text || "");
+    return DOMPurify.sanitize(rawHtml, {
+      ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'code', 'pre', 'blockquote',
+                     'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+                     'a', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr'],
+      ALLOWED_ATTR: ['href', 'target', 'rel', 'title']
+    });
+  }
+
+  // ──────────────────────────────────────────────────────
+  // Persistens (localStorage)
+  // ──────────────────────────────────────────────────────
+  function loadSavedChats() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      console.error("Kunde inte läsa sparade analyser:", e);
+      return [];
+    }
+  }
+
+  function persistSavedChats(chats) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(chats));
+    } catch (e) {
+      console.error("Kunde inte spara:", e);
+      showToast("Kunde inte spara — minnet kan vara fullt", true);
+    }
+  }
+
+  function saveCurrentChat() {
+    if (currentChat.messages.length === 0) return;
+
+    const saved = loadSavedChats();
+
+    // Skapa titel från första användarmeddelande
+    if (!currentChat.title) {
+      const firstUser = currentChat.messages.find(m => m.role === "user");
+      currentChat.title = firstUser ? firstUser.text.substring(0, 60) : "Analys";
+    }
+
+    if (!currentChat.id) {
+      currentChat.id = crypto.randomUUID();
+      currentChat.createdAt = Date.now();
+      saved.unshift({ ...currentChat });
+    } else {
+      const idx = saved.findIndex(c => c.id === currentChat.id);
+      if (idx >= 0) {
+        saved[idx] = { ...currentChat };
+      } else {
+        saved.unshift({ ...currentChat });
+      }
+    }
+
+    persistSavedChats(saved);
+    renderSavedList();
+    showToast("Analys sparad");
+  }
+
+  function loadChat(chatId) {
+    const saved = loadSavedChats();
+    const chat = saved.find(c => c.id === chatId);
+    if (!chat) return;
+
+    currentChat = { ...chat, messages: [...chat.messages] };
+    sessionId = chat.sessionId || crypto.randomUUID();
+
+    messagesEl.innerHTML = "";
+    sugsEl.style.display = "none";
+
+    currentChat.messages.forEach(m => {
+      renderMessage(m.role, m.text, false);
+    });
+
+    updateButtons();
+    renderSavedList();
+
+    if (window.innerWidth <= 720) asideEl.classList.remove("open");
+  }
+
+  function deleteChat(chatId, ev) {
+    ev.stopPropagation();
+    if (!confirm("Vill du ta bort denna sparade analys?")) return;
+
+    const saved = loadSavedChats().filter(c => c.id !== chatId);
+    persistSavedChats(saved);
+
+    if (currentChat.id === chatId) {
+      newChat();
+    } else {
+      renderSavedList();
+    }
+    showToast("Analys borttagen");
+  }
+
+  function renderSavedList() {
+    const saved = loadSavedChats();
+    savedListEl.innerHTML = "";
+
+    if (saved.length === 0) {
+      savedListEl.innerHTML = `<div class="saved-empty">Inga sparade analyser ännu.<br>Klicka "Spara" för att lägga till.</div>`;
+      return;
+    }
+
+    saved.forEach(chat => {
+      const item = document.createElement("div");
+      item.className = "saved-item" + (chat.id === currentChat.id ? " active" : "");
+      item.onclick = () => loadChat(chat.id);
+
+      const date = new Date(chat.createdAt);
+      const dateStr = date.toLocaleDateString("sv-SE", {
+        month: "short", day: "numeric"
+      });
+
+      item.innerHTML = `
+        <div class="saved-item-title">${escapeHtml(chat.title || "Analys")}</div>
+        <div class="saved-item-date">${dateStr} · ${chat.messages.length} meddelanden</div>
+        <button class="saved-item-delete" title="Ta bort">
+          <svg viewBox="0 0 16 16"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+        </button>
+      `;
+      item.querySelector(".saved-item-delete").onclick = (e) => deleteChat(chat.id, e);
+      savedListEl.appendChild(item);
+    });
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  // ──────────────────────────────────────────────────────
+  // UI-hjälpare
+  // ──────────────────────────────────────────────────────
+  function autoResize(el) {
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 140) + "px";
+  }
+
+  function handleKey(e) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  }
+
+  function sendSuggestion(btn) {
+    // Dra ut bara textdelen (utan tag-prefix)
+    const tag = btn.querySelector(".suggestion-tag");
+    const text = tag ? btn.textContent.replace(tag.textContent, "").trim() : btn.textContent.trim();
+    inputEl.value = text;
+    sugsEl.style.display = "none";
+    sendMessage();
+  }
+
+  function scrollBottom() {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function showToast(text, isError = false) {
+    toastEl.textContent = text;
+    toastEl.style.borderColor = isError ? "var(--danger)" : "var(--accent)";
+    toastEl.classList.add("show");
+    setTimeout(() => toastEl.classList.remove("show"), 2200);
+  }
+
+  function toggleAside() {
+    asideEl.classList.toggle("open");
+  }
+
+  function newChat() {
+    if (currentChat.messages.length > 0 && !currentChat.id) {
+      if (!confirm("Du har osparade meddelanden. Starta ny analys ändå?")) return;
+    }
+    sessionId = crypto.randomUUID();
+    currentChat = {
+      id: null,
+      title: null,
+      createdAt: null,
+      sessionId: sessionId,
+      messages: []
+    };
+    messagesEl.innerHTML = "";
+    sugsEl.style.display = "flex";
+
+    // Återställ empty state
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.id = "empty";
+    empty.innerHTML = `
+      <div class="empty-icon">📊</div>
+      <h2>Vad vill du analysera?</h2>
+      <p>Ställ frågor om statistik och samhällsdata för Västra Götaland — från SCB, Kolada och regeringens dokument. Spara intressanta analyser i sidopanelen för att återvända till dem senare.</p>
+    `;
+    messagesEl.appendChild(empty);
+
+    updateButtons();
+    renderSavedList();
+  }
+
+  function updateButtons() {
+    const hasMessages = currentChat.messages.length > 0;
+    saveBtn.disabled = !hasMessages;
+    exportMdBtn.disabled = !hasMessages;
+    exportDocxBtn.disabled = !hasMessages;
+
+    if (hasMessages) {
+      msgCountEl.textContent = `${currentChat.messages.length} meddelanden`;
+    } else {
+      msgCountEl.textContent = "";
+    }
+  }
+
+  // ──────────────────────────────────────────────────────
+  // Meddelanderendering
+  // ──────────────────────────────────────────────────────
+  function renderMessage(role, text, animate = true) {
+    const empty = document.getElementById("empty");
+    if (empty) empty.remove();
+
+    const row = document.createElement("div");
+    row.className = `msg-row ${role}`;
+    if (!animate) row.style.animation = "none";
+
+    const headerDiv = document.createElement("div");
+    headerDiv.className = "msg-header";
+
+    const label = document.createElement("div");
+    label.className = "msg-label";
+    label.textContent = role === "user" ? "Du" : "Assistent";
+    headerDiv.appendChild(label);
+
+    if (role === "bot") {
+      const actions = document.createElement("div");
+      actions.className = "msg-actions";
+
+      const copyBtn = document.createElement("button");
+      copyBtn.className = "msg-action-btn";
+      copyBtn.title = "Kopiera";
+      copyBtn.innerHTML = `<svg viewBox="0 0 16 16"><path d="M5 1h7a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1zm0 1.5V11h7V2.5H5zM3 5v9a1 1 0 0 0 1 1h7v-1H4V5H3z"/></svg>`;
+      copyBtn.onclick = () => copyMessage(text, copyBtn);
+      actions.appendChild(copyBtn);
+
+      headerDiv.appendChild(actions);
+    }
+
+    row.appendChild(headerDiv);
+
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+
+    if (role === "bot") {
+      bubble.innerHTML = renderMarkdown(text);
+    } else {
+      bubble.textContent = text;
+    }
+
+    row.appendChild(bubble);
+    messagesEl.appendChild(row);
+    if (animate) scrollBottom();
+    return bubble;
+  }
+
+  function copyMessage(text, btn) {
+    navigator.clipboard.writeText(text).then(() => {
+      btn.classList.add("copied");
+      btn.innerHTML = `<svg viewBox="0 0 16 16"><path d="M2 8l4 4 8-8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+      setTimeout(() => {
+        btn.classList.remove("copied");
+        btn.innerHTML = `<svg viewBox="0 0 16 16"><path d="M5 1h7a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1zm0 1.5V11h7V2.5H5zM3 5v9a1 1 0 0 0 1 1h7v-1H4V5H3z"/></svg>`;
+      }, 1600);
+      showToast("Kopierat till urklipp");
+    });
+  }
+
+  function addTyping() {
+    const row = document.createElement("div");
+    row.className = "msg-row bot";
+    row.id = "typing";
+
+    const headerDiv = document.createElement("div");
+    headerDiv.className = "msg-header";
+    const label = document.createElement("div");
+    label.className = "msg-label";
+    label.textContent = "Assistent";
+    headerDiv.appendChild(label);
+    row.appendChild(headerDiv);
+
+    const bubble = document.createElement("div");
+    bubble.className = "typing-bubble";
+    bubble.innerHTML = "<span></span><span></span><span></span>";
+
+    row.appendChild(bubble);
+    messagesEl.appendChild(row);
+    scrollBottom();
+  }
+
+  function removeTyping() {
+    const el = document.getElementById("typing");
+    if (el) el.remove();
+  }
+
+  // ──────────────────────────────────────────────────────
+  // Skicka meddelande
+  // ──────────────────────────────────────────────────────
+  async function sendMessage() {
+    const text = inputEl.value.trim();
+    if (!text || isLoading) return;
+
+    isLoading = true;
+    sendBtn.disabled = true;
+    inputEl.value = "";
+    inputEl.style.height = "auto";
+    sugsEl.style.display = "none";
+
+    renderMessage("user", text);
+    currentChat.messages.push({ role: "user", text, ts: Date.now() });
+
+    addTyping();
+
+    try {
+      const res = await fetch(WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "sendMessage",
+          sessionId: sessionId,
+          chatInput: text
+        })
+      });
+
+      removeTyping();
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      let reply = "";
+      if (typeof data === "string") {
+        reply = data;
+      } else if (data.output) {
+        reply = data.output;
+      } else if (data.text) {
+        reply = data.text;
+      } else if (Array.isArray(data) && data[0]?.output) {
+        reply = data[0].output;
+      } else {
+        reply = JSON.stringify(data, null, 2);
+      }
+
+      renderMessage("bot", reply);
+      currentChat.messages.push({ role: "bot", text: reply, ts: Date.now() });
+
+      // Auto-spara om analysen redan var sparad
+      if (currentChat.id) {
+        const saved = loadSavedChats();
+        const idx = saved.findIndex(c => c.id === currentChat.id);
+        if (idx >= 0) {
+          saved[idx] = { ...currentChat };
+          persistSavedChats(saved);
+        }
+      }
+
+    } catch (err) {
+      removeTyping();
+      const errMsg = `Kunde inte nå assistenten. Kontrollera att n8n-flödet är aktivt.\n\n**Fel:** ${err.message}`;
+      renderMessage("bot", errMsg);
+      currentChat.messages.push({ role: "bot", text: errMsg, ts: Date.now() });
+    }
+
+    isLoading = false;
+    sendBtn.disabled = false;
+    inputEl.focus();
+    updateButtons();
+  }
+
+  // ──────────────────────────────────────────────────────
+  // Export — Markdown
+  // ──────────────────────────────────────────────────────
+  function exportMarkdown() {
+    if (currentChat.messages.length === 0) return;
+
+    const date = new Date().toLocaleString("sv-SE");
+    const title = currentChat.title || (currentChat.messages.find(m => m.role === "user")?.text.substring(0, 60)) || "Analys";
+
+    let md = `# ${title}\n\n`;
+    md += `*Genererad ${date} · Länsstyrelsen Västra Götaland*\n\n`;
+    md += `---\n\n`;
+
+    currentChat.messages.forEach(m => {
+      if (m.role === "user") {
+        md += `## 👤 Fråga\n\n${m.text}\n\n`;
+      } else {
+        md += `## 🤖 Svar\n\n${m.text}\n\n`;
+      }
+      md += `---\n\n`;
+    });
+
+    md += `\n*Källor: SCB · Kolada · Regeringskansliet*\n`;
+
+    const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+    const filename = sanitizeFilename(title) + ".md";
+    saveAs(blob, filename);
+    showToast("Markdown nedladdad");
+  }
+
+  // ──────────────────────────────────────────────────────
+  // Export — Word/.docx
+  // ──────────────────────────────────────────────────────
+  async function exportDocx() {
+    if (currentChat.messages.length === 0) return;
+
+    const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle } = docx;
+
+    const date = new Date().toLocaleString("sv-SE");
+    const title = currentChat.title || (currentChat.messages.find(m => m.role === "user")?.text.substring(0, 60)) || "Analys";
+
+    const children = [];
+
+    // Titel
+    children.push(new Paragraph({
+      heading: HeadingLevel.TITLE,
+      children: [new TextRun({ text: title, bold: true, size: 36 })],
+    }));
+
+    // Metadata
+    children.push(new Paragraph({
+      children: [new TextRun({
+        text: `Genererad ${date} · Länsstyrelsen Västra Götaland`,
+        italics: true,
+        color: "666666",
+        size: 20
+      })],
+      spacing: { after: 400 }
+    }));
+
+    // Konverterar meddelanden
+    currentChat.messages.forEach(m => {
+      if (m.role === "user") {
+        children.push(new Paragraph({
+          heading: HeadingLevel.HEADING_2,
+          children: [new TextRun({ text: "Fråga", bold: true, color: "1f6feb" })],
+          spacing: { before: 300, after: 100 }
+        }));
+        children.push(new Paragraph({
+          children: [new TextRun({ text: m.text, size: 22 })],
+          spacing: { after: 200 }
+        }));
+      } else {
+        children.push(new Paragraph({
+          heading: HeadingLevel.HEADING_2,
+          children: [new TextRun({ text: "Svar", bold: true, color: "2ea44f" })],
+          spacing: { before: 300, after: 100 }
+        }));
+
+        // Konvertera Markdown till enkla paragrafer
+        const lines = m.text.split("\n");
+        lines.forEach(line => {
+          if (line.trim() === "") {
+            children.push(new Paragraph({ children: [new TextRun("")] }));
+            return;
+          }
+
+          // Rubriker
+          if (line.startsWith("### ")) {
+            children.push(new Paragraph({
+              heading: HeadingLevel.HEADING_3,
+              children: [new TextRun({ text: line.substring(4), bold: true })]
+            }));
+            return;
+          }
+          if (line.startsWith("## ")) {
+            children.push(new Paragraph({
+              heading: HeadingLevel.HEADING_3,
+              children: [new TextRun({ text: line.substring(3), bold: true })]
+            }));
+            return;
+          }
+          if (line.startsWith("# ")) {
+            children.push(new Paragraph({
+              heading: HeadingLevel.HEADING_2,
+              children: [new TextRun({ text: line.substring(2), bold: true })]
+            }));
+            return;
+          }
+
+          // Punktlistor
+          if (line.match(/^[\s]*[-*]\s/)) {
+            const text = line.replace(/^[\s]*[-*]\s/, "");
+            children.push(new Paragraph({
+              children: parseInlineFormatting(text),
+              bullet: { level: 0 }
+            }));
+            return;
+          }
+
+          // Numrerade listor
+          if (line.match(/^[\s]*\d+\.\s/)) {
+            const text = line.replace(/^[\s]*\d+\.\s/, "");
+            children.push(new Paragraph({
+              children: parseInlineFormatting(text),
+              numbering: { reference: "default-numbering", level: 0 }
+            }));
+            return;
+          }
+
+          // Vanlig text
+          children.push(new Paragraph({
+            children: parseInlineFormatting(line),
+            spacing: { after: 120 }
+          }));
+        });
+      }
+    });
+
+    // Källor i slutet
+    children.push(new Paragraph({
+      children: [new TextRun({
+        text: "Källor: SCB · Kolada · Regeringskansliet",
+        italics: true,
+        color: "666666",
+        size: 20
+      })],
+      spacing: { before: 600 },
+      alignment: AlignmentType.CENTER
+    }));
+
+    const doc = new Document({
+      creator: "Länsstyrelsen Västra Götaland",
+      title: title,
+      sections: [{ children }]
+    });
+
+    const blob = await Packer.toBlob(doc);
+    const filename = sanitizeFilename(title) + ".docx";
+    saveAs(blob, filename);
+    showToast("Word-dokument nedladdat");
+  }
+
+  // Enkel inline-formattering: **fet** och *kursiv*
+  function parseInlineFormatting(text) {
+    const { TextRun } = docx;
+    const runs = [];
+    let remaining = text;
+    let buffer = "";
+
+    while (remaining.length > 0) {
+      // Fet
+      const boldMatch = remaining.match(/^\*\*([^*]+)\*\*/);
+      if (boldMatch) {
+        if (buffer) { runs.push(new TextRun({ text: buffer, size: 22 })); buffer = ""; }
+        runs.push(new TextRun({ text: boldMatch[1], bold: true, size: 22 }));
+        remaining = remaining.substring(boldMatch[0].length);
+        continue;
+      }
+      // Kursiv
+      const italMatch = remaining.match(/^\*([^*]+)\*/);
+      if (italMatch) {
+        if (buffer) { runs.push(new TextRun({ text: buffer, size: 22 })); buffer = ""; }
+        runs.push(new TextRun({ text: italMatch[1], italics: true, size: 22 }));
+        remaining = remaining.substring(italMatch[0].length);
+        continue;
+      }
+      // Inline-kod
+      const codeMatch = remaining.match(/^`([^`]+)`/);
+      if (codeMatch) {
+        if (buffer) { runs.push(new TextRun({ text: buffer, size: 22 })); buffer = ""; }
+        runs.push(new TextRun({ text: codeMatch[1], font: "Consolas", size: 20 }));
+        remaining = remaining.substring(codeMatch[0].length);
+        continue;
+      }
+      buffer += remaining[0];
+      remaining = remaining.substring(1);
+    }
+
+    if (buffer) runs.push(new TextRun({ text: buffer, size: 22 }));
+    return runs.length > 0 ? runs : [new TextRun({ text: text, size: 22 })];
+  }
+
+  function sanitizeFilename(name) {
+    return name
+      .substring(0, 60)
+      .replace(/[\/\\:*?"<>|]/g, "")
+      .replace(/\s+/g, "_")
+      .trim() || "analys";
+  }
+
+  // ──────────────────────────────────────────────────────
+  // Init
+  // ──────────────────────────────────────────────────────
+  renderSavedList();
+  updateButtons();
+  inputEl.focus();
+</script>
+</body>
+</html>
